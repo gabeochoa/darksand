@@ -19,6 +19,7 @@ enum Material {
     Empty = 0,
     Sand = 1,
     Wood = 2,
+    Water = 3,
 };
 Material selectedMaterial = Sand;
 
@@ -217,4 +218,5 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action,
     if (pressed(window, GLFW_KEY_S)) selectedMaterial = Sand;
     if (pressed(window, GLFW_KEY_T)) selectedMaterial = Wood;
     if (pressed(window, GLFW_KEY_E)) selectedMaterial = Empty;
+    if (pressed(window, GLFW_KEY_W)) selectedMaterial = Water;
 }

@@ -10,7 +10,7 @@ uniform int mouse_leftButton_u;
 uniform int selected_material;
 
 vec4 getTexColor(vec2 off);
-vec4 calcColor();
+vec4 updatePixel();
 bool equalFloat(float a, float b);
 bool eqCol(vec4 color1, vec4 color2);
 bool neqCol(vec4 color1, vec4 color2);
@@ -20,11 +20,14 @@ vec4 matColor();
 float width = 1920;
 float height = 1080;
 
+vec4 fake_color = vec4(-1.0,0.0,0.0,0.0);
+vec4 outside = vec4(-2.0,0.0,0.0,0.0);
 vec4 black = vec4(0.0,0.0,0.0,0.0);
 vec4 magenta = vec4(1.0,0.0,1.0,1.0);
 vec4 sand_color = vec4(0.77,0.52,0.0,1.0);
 vec4 wood_color = vec4(0.15,0.80,0.2,1.0);
-vec2 unitPixel = vec2(1.0,1.0)/vec2(800,600);
+vec4 water_color = vec4(0.05,0.0,0.9,1.0);
+vec2 unitPixel = vec2(1.0,1.0)/vec2(width,height);
 
 vec2 up = vec2(0.0,1.0);
 vec2 down = vec2(0.0,-1.0);
@@ -57,10 +60,12 @@ vec4 clicked_circle = gen_circle();
 
 void main()
 {
-    vec4 res = calcColor();
+    vec4 res = updatePixel();
     FragColor = res;
     color_out = res;
 }
+
+vec4 test(){ return vec4(pos.x, pos.y, 0.0, 1.0); }
 
 bool eqCol(vec4 color1, vec4 color2){
     return equalFloat(color1.x,color2.x) && equalFloat(color1.y,color2.y) && equalFloat(color1.z,color2.z);
@@ -73,69 +78,102 @@ vec4 matColor(){
     if(selected_material == 0) return black;
     if(selected_material == 1) return sand_color;
     if(selected_material == 2) return wood_color;
+    if(selected_material == 3) return water_color;
     return magenta;
 }
 
-vec4 calcColor(){
-    // if empty, 
-    if(int(selected_material == 0) * isIn * mouse_leftButton_u == 1) return black;
+bool solid(vec4 mat){
+    return 
+        eqCol(mat, sand_color) ||  
+        eqCol(mat, wood_color)  || 
+        // TODO flags? 
+        eqCol(mat, water_color) 
+        ;
+}
+
+bool falls(vec4 mat){
+    return 
+        eqCol(mat, sand_color) ||  
+        eqCol(mat, water_color) 
+        ;
+}
 
 
-    if(
-            (hereColor == black) && 
-            (upColor == black) && 
-            (downColor == black) && 
-            (rightColor == black) && 
-            (leftColor == black)
-    ) 
-        return clicked_circle;
 
-    // wood rules 
-    if(eqCol(wood_color,hereColor)) return hereColor;
-    // end of wood rules
+vec4 updateWood(){
+    return hereColor;
+}
 
-    // sand rules
-    //dont falling from canvas
-    if(pos.y <= unitPixel.y && eqCol(hereColor,sand_color)) return hereColor;
-    if(pos.x <= unitPixel.x && eqCol(upColor,sand_color)) return upColor;
-    if(pos.x <= unitPixel.x && eqCol(uprightColor,sand_color)) return uprightColor;
-    if(pos.x >= (unitPixel.x * width) && eqCol(upColor,sand_color)) return upColor;
-    if(pos.x >= (unitPixel.x * (width-1)) && eqCol(upleftColor,sand_color)) return upleftColor;
+bool inBound(vec2 direction){
+    if( (pos.x + direction.x * unitPixel.x) >= 1.0) return false;
+    if( (pos.y + direction.y * unitPixel.y) >= 1.0) return false;
+    if( (pos.x + direction.x * unitPixel.x) < 0.0) return false;
+    if( (pos.y + direction.y * unitPixel.y) < 0.0) return false;
+    return true;
+}
 
-    //falling
-    if(eqCol(hereColor,black) && eqCol(upColor,sand_color)) return upColor;
-    if(eqCol(hereColor,sand_color) && eqCol(downColor,black)) return black;
+vec4 updateInBounds(vec4 mat){
+    if(pos.y <= unitPixel.y && eqCol(hereColor,mat)) return hereColor;
+    if(pos.x <= unitPixel.x && eqCol(upColor,mat)) return upColor;
+    if(pos.x <= unitPixel.x && eqCol(uprightColor,mat)) return uprightColor;
+    if(pos.x >= (unitPixel.x * width) && eqCol(upColor,mat)) return upColor;
+    if(pos.x >= (unitPixel.x * (width-1)) && eqCol(upleftColor,mat)) return upleftColor;
+    return fake_color;
+}
 
-    //TODO there's one border case left on sliding behaviour
-    //stacking up (on sand or on wood) or sliding if posible
-    if(
-            eqCol(hereColor,sand_color) && 
-            (eqCol(downColor,sand_color) || eqCol(downColor,wood_color))
-    ){
+vec4 updateFalling(vec4 mat){
+    // gravity
+    if(eqCol(hereColor,black) && eqCol(upColor,mat)) return upColor;
+    if(eqCol(hereColor,mat) && eqCol(downColor,black)) return black;
+    return fake_color;
+}
+
+vec4 updateSlide(vec4 mat){
+    if(eqCol(hereColor,mat) && solid(downColor)){
         if(
-                eqCol(downleftColor,sand_color) && 
+                eqCol(downleftColor,mat) && 
                 eqCol(rightColor,black) && 
                 eqCol(downrightColor,black) && 
-                eqCol(rightrightColor,black) && 
+                eqCol(rightrightColor,black) &&
                 eqCol(upColor,black) 
                 && eqCol(uprightColor,black)
-         )  //fall to the right
+         ) 
+        {
+            //fall to the right
             return black;
-        else if(eqCol(downrightColor,sand_color) && eqCol(leftColor,black) && eqCol(downleftColor,black) && eqCol(leftleftColor,black) && eqCol(upColor,black) && eqCol(upleftColor,black))  //fall to the left
+        }
+        else if(
+                eqCol(downrightColor,mat) && 
+                eqCol(leftColor,black) && 
+                eqCol(downleftColor,black) && 
+                eqCol(leftleftColor,black) && 
+                eqCol(upColor,black) && 
+                eqCol(upleftColor,black))  //fall to the left
             return black;
-        else if((leftleftColor == black) && (downleftColor == black) && (leftColor == black) && (upleftColor == black) && (upColor == black) && (uprightColor == black) && (rightColor == black) && (rightrightColor == black) && (downrightColor == black)) //fal to one of both sides (supose the right one)
+        else if(
+                (leftleftColor == black) && 
+                (downleftColor == black) && 
+                (leftColor == black) && 
+                (upleftColor == black) && 
+                (upColor == black) && 
+                (uprightColor == black) && 
+                (rightColor == black) && 
+                (rightrightColor == black) && 
+                (downrightColor == black)
+        ) //fall to one of both sides (supose the right one)
             return black;
         else
             return hereColor;
     }
 
-
-    //sliding coloring rules
+    ////// 
+    //////  We are being slid into 
+    ////// 
     if(
             eqCol(hereColor,black) && 
-            eqCol(leftColor,sand_color) && 
-            eqCol(downleftColor,sand_color) && 
-            eqCol(downleftleftColor,sand_color) && 
+            eqCol(leftColor,mat) && 
+            eqCol(downleftColor,mat) && 
+            eqCol(downleftleftColor,mat) && 
             eqCol(rightColor,black) && 
             eqCol(upColor,black) && 
             eqCol(upleftColor,black) && 
@@ -143,18 +181,86 @@ vec4 calcColor(){
     )
         return leftColor;
 
-    if(eqCol(hereColor,black) && eqCol(rightColor,sand_color) && eqCol(downrightColor,sand_color) && eqCol(downrightrightColor,sand_color) && eqCol(leftColor,black) && eqCol(upColor,black) && eqCol(uprightColor,black) && eqCol(downColor,black))
+    if(
+            eqCol(hereColor,black) && 
+            eqCol(rightColor,mat) && 
+            eqCol(downrightColor,mat) && 
+            eqCol(downrightrightColor,mat) && 
+            eqCol(leftColor,black) && 
+            eqCol(upColor,black) && 
+            eqCol(uprightColor,black) && 
+            eqCol(downColor,black)
+    )
         return rightColor;
-    if(eqCol(hereColor,black) && eqCol(downColor,black) && eqCol(rightColor,black) && eqCol(upColor,black) && eqCol(leftColor,sand_color) && eqCol(downleftColor,sand_color) && eqCol(upleftColor,black) && eqCol(upleftleftColor,black) && eqCol(leftleftColor,black) && eqCol(downleftleftColor,black) && eqCol(leftleftleftColor,black))
+
+    if(
+            eqCol(hereColor,black) && 
+            eqCol(downColor,black) && 
+            eqCol(rightColor,black) && 
+            eqCol(upColor,black) && 
+            eqCol(leftColor,mat) && 
+            eqCol(downleftColor,mat) && 
+            eqCol(upleftColor,black) && 
+            eqCol(upleftleftColor,black) && 
+            eqCol(leftleftColor,black) && 
+            eqCol(downleftleftColor,black) && 
+            eqCol(leftleftleftColor,black)
+     )
         return leftColor;
-    // end of sand rules
+    return fake_color;
+}
+
+vec4 updateSand(){
+    vec4 checker = fake_color;
+    // if we are against a wall, just stay still
+    checker = updateInBounds(sand_color);
+    if(neqCol(checker, fake_color)) return checker;
+    // if there is a sand above us, it should fall down 
+    checker = updateFalling(sand_color);
+    if(neqCol(checker, fake_color)) return checker;
+    // we are sliding down 
+    checker = updateSlide(sand_color);
+    if(neqCol(checker, fake_color)) return checker;
+    return fake_color;
+}
+
+vec4 updateWater(){
+    vec4 checker = fake_color;
+    // if we are against a wall, just stay still
+    checker = updateInBounds(water_color);
+    if(neqCol(checker, fake_color)) return checker;
+    checker = updateFalling(water_color);
+    if(neqCol(checker, fake_color)) return checker;
+
+    // we are sliding down 
+    checker = updateSlide(water_color);
+    if(neqCol(checker, fake_color)) return checker;
+    return fake_color;
+}
+
+
+vec4 updatePixel(){
+    if( equalFloat(pos.y, 1.0) && equalFloat(pos.x, 0.25)) return sand_color;
+    if( equalFloat(pos.y, 1.0) && equalFloat(pos.x, 0.75)) return water_color;
+    // if you press mouse, and we are in screen, write selectedMaterial
+    if(isIn * mouse_leftButton_u == 1) return matColor();
+
+    vec4 c = fake_color;
+    if(eqCol(wood_color,hereColor)) return updateWood();
+
+    // sand 
+    c = updateSand();
+    if(neqCol(c, fake_color)) return c;
+    // water 
+    c = updateWater();
+    if(neqCol(c, fake_color)) return c;
 
     return clicked_circle;
 }
 
+
 vec4 getTexColor(vec2 off){
     if(TexCoord.y + unitPixel.y > height+1) return black;
     if(TexCoord.y + unitPixel.y < -1) return black;
-
     return texture(texture_u, vec2(TexCoord.x + unitPixel.x*off.x,TexCoord.y + unitPixel.y*off.y));
 }
