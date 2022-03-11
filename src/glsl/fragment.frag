@@ -19,6 +19,8 @@ vec4 matColor();
 
 float width = 1920;
 float height = 1080;
+int width_as_int= int(width);
+int height_as_int = int(height);
 
 vec4 fake_color = vec4(-1.0,0.0,0.0,0.0);
 vec4 outside = vec4(-2.0,0.0,0.0,0.0);
@@ -53,6 +55,16 @@ vec4 uprightColor = getTexColor(up+right);
 
 vec2 pos = gl_FragCoord.xy/vec2(width,height);
 
+// Gold Noise ©2015 dcerisano@standard3d.com
+// - based on the Golden Ratio
+// - uniform normalized distribution
+// - fastest static noise generator function (also runs at low precision)
+// - use with indicated seeding method. 
+float PHI = 1.61803398874989484820459;  // Φ = Golden Ratio   
+float gold_noise(in vec2 xy, in float seed){
+       return fract(tan(distance(xy*PHI, xy)*seed)*xy.x);
+}
+
 //circle arround the mouse
 float isIn = step(sqrt(pow((mouse_pos_u.x-pos.x)*width,2)+pow((mouse_pos_u.y-pos.y)*height,2)),20);
 //if the mouse is clicked, draws particles arround the circle
@@ -65,10 +77,12 @@ void main()
     color_out = res;
 }
 
-vec4 test(){ return vec4(pos.x, pos.y, 0.0, 1.0); }
-
 bool eqCol(vec4 color1, vec4 color2){
-    return equalFloat(color1.x,color2.x) && equalFloat(color1.y,color2.y) && equalFloat(color1.z,color2.z);
+    return (
+            equalFloat(color1.x,color2.x) && 
+            equalFloat(color1.y,color2.y) && 
+            equalFloat(color1.z,color2.z)
+           );
 }
 bool neqCol(vec4 color1, vec4 color2){ return !eqCol(color1,color2); }
 bool equalFloat(float a, float b){ return abs(a-b) < 0.01; }
@@ -85,7 +99,7 @@ vec4 matColor(){
 bool solid(vec4 mat){
     return 
         eqCol(mat, sand_color) ||  
-        eqCol(mat, wood_color)  || 
+        eqCol(mat, wood_color) || 
         // TODO flags? 
         eqCol(mat, water_color) 
         ;
@@ -99,10 +113,6 @@ bool falls(vec4 mat){
 }
 
 
-
-vec4 updateWood(){
-    return hereColor;
-}
 
 bool inBound(vec2 direction){
     if( (pos.x + direction.x * unitPixel.x) >= 1.0) return false;
@@ -128,48 +138,30 @@ vec4 updateFalling(vec4 mat){
     return fake_color;
 }
 
-vec4 updateSlide(vec4 mat){
-    if(eqCol(hereColor,mat) && solid(downColor)){
-        if(
-                eqCol(downleftColor,mat) && 
-                eqCol(rightColor,black) && 
-                eqCol(downrightColor,black) && 
-                eqCol(rightrightColor,black) &&
-                eqCol(upColor,black) 
-                && eqCol(uprightColor,black)
-         ) 
-        {
-            //fall to the right
-            return black;
-        }
-        else if(
-                eqCol(downrightColor,mat) && 
-                eqCol(leftColor,black) && 
-                eqCol(downleftColor,black) && 
-                eqCol(leftleftColor,black) && 
-                eqCol(upColor,black) && 
-                eqCol(upleftColor,black))  //fall to the left
-            return black;
-        else if(
-                (leftleftColor == black) && 
-                (downleftColor == black) && 
-                (leftColor == black) && 
-                (upleftColor == black) && 
-                (upColor == black) && 
-                (uprightColor == black) && 
-                (rightColor == black) && 
-                (rightrightColor == black) && 
-                (downrightColor == black)
-        ) //fall to one of both sides (supose the right one)
-            return black;
-        else
-            return hereColor;
-    }
+bool canFallRight(vec4 mat){
+    return (
+            eqCol(downleftColor,mat) && 
+            eqCol(rightColor,black) && 
+            eqCol(downrightColor,black) && 
+            eqCol(rightrightColor,black) &&
+            eqCol(upColor,black) && 
+            eqCol(uprightColor,black)
+           );
+}
 
-    ////// 
-    //////  We are being slid into 
-    ////// 
-    if(
+bool canFallLeft(vec4 mat){
+    return (
+            eqCol(downrightColor,mat) && 
+            eqCol(leftColor,black) && 
+            eqCol(downleftColor,black) && 
+            eqCol(leftleftColor,black) && 
+            eqCol(upColor,black) && 
+            eqCol(upleftColor,black)
+           );
+}
+
+bool shouldLeftSlideInto(vec4 mat){
+    return (
             eqCol(hereColor,black) && 
             eqCol(leftColor,mat) && 
             eqCol(downleftColor,mat) && 
@@ -178,10 +170,11 @@ vec4 updateSlide(vec4 mat){
             eqCol(upColor,black) && 
             eqCol(upleftColor,black) && 
             eqCol(downColor,black)
-    )
-        return leftColor;
+           );
+}
 
-    if(
+bool shouldRightSlideInto(vec4 mat){
+    return (
             eqCol(hereColor,black) && 
             eqCol(rightColor,mat) && 
             eqCol(downrightColor,mat) && 
@@ -190,23 +183,35 @@ vec4 updateSlide(vec4 mat){
             eqCol(upColor,black) && 
             eqCol(uprightColor,black) && 
             eqCol(downColor,black)
-    )
-        return rightColor;
+           );
+}
 
-    if(
-            eqCol(hereColor,black) && 
-            eqCol(downColor,black) && 
-            eqCol(rightColor,black) && 
-            eqCol(upColor,black) && 
-            eqCol(leftColor,mat) && 
-            eqCol(downleftColor,mat) && 
-            eqCol(upleftColor,black) && 
-            eqCol(upleftleftColor,black) && 
-            eqCol(leftleftColor,black) && 
-            eqCol(downleftleftColor,black) && 
-            eqCol(leftleftleftColor,black)
-     )
-        return leftColor;
+vec4 updateSlide(vec4 mat, int d){
+    // We are sliding
+    if(eqCol(hereColor,mat) && solid(downColor)){
+        if(canFallRight(mat)) { return black;}
+        else if(canFallLeft(mat)){ return black;}
+        else return hereColor;
+    }
+    // We are being slid into 
+    if(shouldLeftSlideInto(mat)) return leftColor;
+    if(shouldRightSlideInto(mat)) return rightColor;
+
+    // already handled distance of 1 
+    if(d <= 1) return fake_color;
+
+    // TODO seed
+    bool dir = gold_noise(vec2(pos.x, 0), 0) > 0.5;
+    int dst = width_as_int/2;
+    if(!dir) dst *= -1;
+    int step = 1;
+
+    while(step < width_as_int/2){
+        step++;
+    }
+
+
+
     return fake_color;
 }
 
@@ -219,7 +224,7 @@ vec4 updateSand(){
     checker = updateFalling(sand_color);
     if(neqCol(checker, fake_color)) return checker;
     // we are sliding down 
-    checker = updateSlide(sand_color);
+    checker = updateSlide(sand_color, 1);
     if(neqCol(checker, fake_color)) return checker;
     return fake_color;
 }
@@ -231,9 +236,7 @@ vec4 updateWater(){
     if(neqCol(checker, fake_color)) return checker;
     checker = updateFalling(water_color);
     if(neqCol(checker, fake_color)) return checker;
-
-    // we are sliding down 
-    checker = updateSlide(water_color);
+    checker = updateSlide(water_color, int(width) );
     if(neqCol(checker, fake_color)) return checker;
     return fake_color;
 }
@@ -242,11 +245,12 @@ vec4 updateWater(){
 vec4 updatePixel(){
     if( equalFloat(pos.y, 1.0) && equalFloat(pos.x, 0.25)) return sand_color;
     if( equalFloat(pos.y, 1.0) && equalFloat(pos.x, 0.75)) return water_color;
+    if( equalFloat(pos.y, pos.x)) return wood_color;
     // if you press mouse, and we are in screen, write selectedMaterial
     if(isIn * mouse_leftButton_u == 1) return matColor();
 
     vec4 c = fake_color;
-    if(eqCol(wood_color,hereColor)) return updateWood();
+    if(eqCol(wood_color,hereColor)) return wood_color;
 
     // sand 
     c = updateSand();
@@ -262,5 +266,10 @@ vec4 updatePixel(){
 vec4 getTexColor(vec2 off){
     if(TexCoord.y + unitPixel.y > height+1) return black;
     if(TexCoord.y + unitPixel.y < -1) return black;
-    return texture(texture_u, vec2(TexCoord.x + unitPixel.x*off.x,TexCoord.y + unitPixel.y*off.y));
+    return texture(
+            texture_u, 
+            vec2(TexCoord.x + unitPixel.x*off.x,
+                TexCoord.y + unitPixel.y*off.y
+                )
+            );
 }
